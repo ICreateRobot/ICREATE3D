@@ -1,0 +1,1016 @@
+/**
+  ******************************************************************************
+  * @file     temperature.c
+  * @author   LEO
+	* @date     2018/12/24
+	* @version  0.0.1
+  * @brief    温控操作函数
+	* @update		加入加热控制函数
+	******************************************************************************
+**/
+#include "temperature.h"
+#include "printer.h"
+#include "adc.h"
+#include "usart.h"
+#include "planner.h"
+#include "thermistortables.h"
+#include "timer.h"
+#include "language.h"
+
+int target_temperature[EXTRUDERS] = {0};
+int target_temperature_bed = 0;
+int current_temperature_raw[EXTRUDERS] = {0};
+float current_temperature[EXTRUDERS] = {0};
+int current_temperature_bed_raw = 0;
+float current_temperature_bed = 0;
+
+#ifdef PIDTEMP
+float Kp = DEFAULT_Kp;
+float Ki = (DEFAULT_Ki*PID_dT);
+float Kd = (DEFAULT_Kd/PID_dT);
+#ifdef PID_ADD_EXTRUSION_RATE
+float Kc = DEFAULT_Kc;
+#endif
+#endif
+
+#ifdef PIDTEMPBED
+float bedKp = DEFAULT_bedKp;
+float bedKi = (DEFAULT_bedKi*PID_dT);
+float bedKd = (DEFAULT_bedKd/PID_dT);
+#endif
+
+static volatile bool temp_meas_ready = false;
+
+#ifdef PIDTEMP
+//static cannot be external:
+static float temp_iState[EXTRUDERS] = {0};
+static float temp_dState[EXTRUDERS] = {0};
+static float pTerm[EXTRUDERS];
+static float iTerm[EXTRUDERS];
+static float dTerm[EXTRUDERS];
+//int output;
+static float pid_error[EXTRUDERS];
+static float temp_iState_min[EXTRUDERS];
+static float temp_iState_max[EXTRUDERS];
+// static float pid_input[EXTRUDERS];
+// static float pid_output[EXTRUDERS];
+static bool pid_reset[EXTRUDERS];
+#endif
+#ifdef PIDTEMPBED
+//static cannot be external:
+static float temp_iState_bed = {0};
+static float temp_dState_bed = {0};
+static float pTerm_bed;
+static float iTerm_bed;
+static float dTerm_bed;
+//int output;
+static float pid_error_bed;
+static float temp_iState_min_bed;
+static float temp_iState_max_bed;
+#else //PIDTEMPBED
+static unsigned long  previous_millis_bed_heater;
+#endif
+static unsigned char soft_pwm[EXTRUDERS];
+static unsigned char soft_pwm_bed;
+
+#if (defined(EXTRUDER_0_AUTO_FAN_PIN) && EXTRUDER_0_AUTO_FAN_PIN > -1) || \
+    (defined(EXTRUDER_1_AUTO_FAN_PIN) && EXTRUDER_1_AUTO_FAN_PIN > -1) || \
+    (defined(EXTRUDER_2_AUTO_FAN_PIN) && EXTRUDER_2_AUTO_FAN_PIN > -1)
+static unsigned long extruder_autofan_last_check;
+#endif
+
+#if EXTRUDERS > 3
+#error Unsupported number of extruders
+#elif EXTRUDERS > 2
+#define ARRAY_BY_EXTRUDERS(v1, v2, v3) {v1, v2, v3}
+#elif EXTRUDERS > 1
+#define ARRAY_BY_EXTRUDERS(v1, v2, v3) {v1, v2}
+#else
+#define ARRAY_BY_EXTRUDERS(v1, v2, v3) {v1}
+#endif
+
+// Init min and max temp with extreme values to prevent false errors during startup
+static int minttemp_raw[EXTRUDERS] = ARRAY_BY_EXTRUDERS(HEATER_0_RAW_LO_TEMP, HEATER_1_RAW_LO_TEMP, HEATER_2_RAW_LO_TEMP);
+static int maxttemp_raw[EXTRUDERS] = ARRAY_BY_EXTRUDERS(HEATER_0_RAW_HI_TEMP, HEATER_1_RAW_HI_TEMP, HEATER_2_RAW_HI_TEMP);
+static int minttemp[EXTRUDERS] = ARRAY_BY_EXTRUDERS(0, 0, 0);
+static int maxttemp[EXTRUDERS] = ARRAY_BY_EXTRUDERS(16383, 16383, 16383);
+//static int bed_minttemp_raw = HEATER_BED_RAW_LO_TEMP; /* No bed mintemp error implemented?!? */
+#ifdef BED_MAXTEMP
+static int bed_maxttemp_raw = HEATER_BED_RAW_HI_TEMP;
+#endif
+static void *heater_ttbl_map[EXTRUDERS] = ARRAY_BY_EXTRUDERS((void *)HEATER_0_TEMPTABLE, (void *)HEATER_1_TEMPTABLE, (void *)HEATER_2_TEMPTABLE);
+static uint8_t heater_ttbllen_map[EXTRUDERS] = ARRAY_BY_EXTRUDERS(HEATER_0_TEMPTABLE_LEN, HEATER_1_TEMPTABLE_LEN, HEATER_2_TEMPTABLE_LEN);
+
+/*加热头模拟值转换温度值 raw:温度阈值 e:加热头*/
+static float analog2temp(int raw, unsigned char e);
+
+/*热床模拟值转换温度值 raw:温度阈值*/
+static float analog2tempBed(int raw);
+
+/*将原始值转换为实际温度*/
+static void updateTemperaturesFromRawValues(void);
+
+#ifdef WATCH_TEMP_PERIOD
+int watch_start_temp[EXTRUDERS] = ARRAY_BY_EXTRUDERS(0, 0, 0);
+unsigned long watchmillis[EXTRUDERS] = ARRAY_BY_EXTRUDERS(0, 0, 0);
+#endif
+
+/*风扇设置pwm比较值 fan:风扇类型 compare:比较值*/
+void Fan_SetCompare(Fan_TypeDef fan, unsigned short int compare)
+{
+    if(fan == Fan_Model0)
+    {
+#if FAN_MODEL_0_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_xx, compare);
+#endif
+    }
+    else if(fan == Fan_Model1)
+    {
+#if FAN_MODEL_1_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Model2)
+    {
+#if FAN_MODEL_2_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Head0)
+    {
+#if FAN_HEAD_0_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Head1)
+    {
+#if FAN_HEAD_1_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Head2)
+    {
+#if FAN_HEAD_2_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Bed)
+    {
+#if FAN_BED_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(fan == Fan_Power)
+    {
+#if FAN_POWER_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+}
+
+/*加热元件设置pwm比较值 heater:加热元件 compare:比较值*/
+void Heater_SetCompare(Heater_TypeDef heater, unsigned short int compare)
+{
+    if(heater == Heater_Head0)
+    {
+#if HEATER_HEAD_0_USED
+        __HAL_TIM_SET_COMPARE(&TIM5_HandleStruct, TIM_CHANNEL_2, compare);
+#endif
+    }
+    else if(heater == Heater_Head1)
+    {
+#if HEATER_HEAD_1_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(heater == Heater_Head2)
+    {
+#if HEATER_HEAD_2_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+    else if(heater == Heater_Bed)
+    {
+#if HEATER_BED_USED
+        __HAL_TIM_SET_COMPARE(&TIMx_HandleStruct, TIM_CHANNEL_x, compare);
+#endif
+    }
+}
+
+/*加热元件获取pwm比较值 heater:加热元件*/
+int Heater_GetCompare(Heater_TypeDef heater)
+{
+    if(heater == Heater_Bed) return soft_pwm_bed;
+    return soft_pwm[heater];
+}
+
+/*加热元件获取数值 heater:加热元件*/
+unsigned short int Heater_GetValue(Heater_TypeDef heater)
+{
+    unsigned short int value;
+    if(heater == Heater_Head0)
+    {
+#if HEATER_HEAD_0_USED
+        value = ADC3_GetValue(ADC_CHANNEL_10) >> 2;
+#endif
+    }
+    else if(heater == Heater_Head1)
+    {
+#if HEATER_HEAD_1_USED
+        value = ADC3_GetValue(ADC_CHANNEL_xx) >> 2;
+#endif
+    }
+    else if(heater == Heater_Head2)
+    {
+#if HEATER_HEAD_2_USED
+        value = ADC3_GetValue(ADC_CHANNEL_xx) >> 2;
+#endif
+    }
+    else if(heater == Heater_Bed)
+    {
+#if HEATER_BED_USED
+        value = ADC3_GetValue(ADC_CHANNEL_xx) >> 2;
+#endif
+    }
+    return value;
+}
+
+/*加热元件设定温度值(℃) heater:加热元件*/
+void Heater_SetTargetCelsius(const float celsius, Heater_TypeDef heater)
+{
+    if(heater == Heater_Bed)
+    {
+#ifdef BED_MAXTEMP
+        if(celsius > BED_MAXTEMP) target_temperature_bed = BED_MAXTEMP;
+        else target_temperature_bed = celsius;
+#endif
+    }
+    else
+    {
+#if FAN_HEAD_0_USED
+        if(celsius == 0) Fan_SetCompare(Fan_Head0, 0);
+        else Fan_SetCompare(Fan_Head0, 127);
+#endif
+        if(celsius > HEATER_0_MAXTEMP) target_temperature[heater] = HEATER_0_MAXTEMP;
+        else target_temperature[heater] = celsius;
+    }
+}
+
+/*加热元件获取当前温度值(℃) heater:加热元件*/
+float Heater_GetCurrentCelsius(Heater_TypeDef heater)
+{
+    float celsius;
+    if(heater == Heater_Bed) celsius = current_temperature_bed;
+    else celsius = current_temperature[heater];
+    return celsius;
+}
+
+/*加热元件获取设定温度值(℃) heater:加热元件*/
+float Heater_GetTargetCelsius(Heater_TypeDef heater)
+{
+    float celsius;
+    if(heater == Heater_Bed) celsius = target_temperature_bed;
+    else celsius = target_temperature[heater];
+    return celsius;
+}
+
+/*判断加热元件是否正在加热 heater:加热元件*/
+bool Heater_IsHeating(Heater_TypeDef heater)
+{
+    bool state = false;
+    if(heater == Heater_Bed)
+    {
+        if(target_temperature_bed > current_temperature_bed) state = true;
+    }
+    else
+    {
+        if(target_temperature[heater] > current_temperature[heater]) state = true;
+    }
+    return state;
+}
+
+/*判断加热元件是否正在冷却 heater:加热元件*/
+bool Heater_IsCooling(Heater_TypeDef heater)
+{
+    bool state = false;
+    if(heater == Heater_Bed)
+    {
+        if(target_temperature_bed < current_temperature_bed) state = true;
+    }
+    else
+    {
+        if(target_temperature[heater] < current_temperature[heater]) state = true;
+    }
+    return state;
+}
+
+/*加热元件PID自动调谐 temp:设定温度 heater:加热元件 ncycles:循环次数*/
+void Heater_PID_AutoTune(float temp, int heater, int ncycles)
+{
+    float input = 0.0;
+    int cycles = 0;
+    bool heating = true;
+    unsigned long temp_millis = HAL_GetTick();
+    unsigned long t1 = temp_millis;
+    unsigned long t2 = temp_millis;
+    long t_high = 0;
+    long t_low = 0;
+    long bias, d;
+    float Ku, Tu;
+    float Kp, Ki, Kd;
+    float max=0, min=10000;
+    if(heater > EXTRUDERS)
+    {
+        printf("PID Autotune failed. Bad extruder number.");
+        return;
+    }
+    printf("PID Autotune start");
+    Heater_Disable();
+    if(heater < 0)
+    {
+        soft_pwm_bed = (MAX_BED_POWER) / 2;
+        bias = d = (MAX_BED_POWER) / 2;
+    }
+    else
+    {
+        soft_pwm[heater] = (PID_MAX) / 2;
+        bias = d = (PID_MAX) / 2;
+    }
+    for(;;)
+    {
+        if(temp_meas_ready == true)	  // temp sample ready
+        {
+            updateTemperaturesFromRawValues();
+            input = (heater<0) ? current_temperature_bed : current_temperature[heater];
+            max = max(max, input);
+            min = min(min, input);
+            if(heating==true && input>temp)
+            {
+                if(HAL_GetTick()-t2 > 5000)
+                {
+                    heating = false;
+                    if(heater < 0) soft_pwm_bed = (bias - d) >> 1;
+                    else soft_pwm[heater] = (bias - d) >> 1;
+                    t1 = HAL_GetTick();
+                    t_high = t1 - t2;
+                    max = temp;
+                }
+            }
+            if(heating==false && input<temp)
+            {
+                if(HAL_GetTick()-t1 > 5000)
+                {
+                    heating = true;
+                    t2 = HAL_GetTick();
+                    t_low = t2 - t1;
+                    if(cycles > 0)
+                    {
+                        bias += (d*(t_high - t_low)) / (t_low + t_high);
+                        bias = constrain(bias, 20,(heater<0?(MAX_BED_POWER):(PID_MAX))-20);
+                        if(bias > (heater<0?(MAX_BED_POWER):(PID_MAX))/2) d = (heater<0?(MAX_BED_POWER):(PID_MAX)) - 1 - bias;
+                        else d = bias;
+                        printf(" bias: %ld", bias);
+                        printf(" d: %ld", d);
+                        printf(" min: %f", min);
+                        printf(" max: %f", max);
+                        if(cycles > 2)
+                        {
+                            Ku = (4.0*d) / (3.14159*(max-min)/2.0);
+                            Tu = ((float)(t_low+t_high) / 1000.0);
+                            printf(" Ku: %f", Ku);
+                            printf(" Tu: %f", Tu);
+                            Kp = 0.6 * Ku;
+                            Ki = 2 * Kp / Tu;
+                            Kd = Kp * Tu / 8;
+                            printf(" Clasic PID ");
+                            printf(" Kp: %f", Kp);
+                            printf(" Ki: %f", Ki);
+                            printf(" Kd: %f", Kd);
+                        }
+                    }
+                    if(heater < 0) soft_pwm_bed = (bias + d) >> 1;
+                    else soft_pwm[heater] = (bias + d) >> 1;
+                    cycles++;
+                    min = temp;
+                }
+            }
+        }
+        if(input > (temp+20))
+        {
+            printf("PID Autotune failed! Temperature to high");
+            return;
+        }
+        if(HAL_GetTick()-temp_millis > 2000)
+        {
+            int p;
+            if(heater < 0)
+            {
+                p = soft_pwm_bed;
+                printf("ok B:");
+            }
+            else
+            {
+                p = soft_pwm[heater];
+                printf("ok T:");
+            }
+            printf("%f @:%d", input, p);
+            temp_millis = HAL_GetTick();
+        }
+        if(((HAL_GetTick()-t1) + (HAL_GetTick()-t2)) > (10L*60L*1000L*2L))
+        {
+            printf("PID Autotune failed! timeout");
+            return;
+        }
+        if(cycles > ncycles)
+        {
+            printf("PID Autotune finished ! Place the Kp, Ki and Kd constants in the printer_conf.h");
+            return;
+        }
+//LEO    lcd_update();
+    }
+}
+
+/*加热元件自动停止*/
+void Heater_AutoShutdown(void)
+{
+#ifdef AUTOTEMP
+    if(autotemp_enabled)
+    {
+        autotemp_enabled = false;
+        if(Heater_GetTargetCelsius((Heater_TypeDef)active_extruder) > autotemp_min) Heater_SetTargetCelsius(0, (Heater_TypeDef)active_extruder);
+    }
+#endif
+}
+
+/*加热元件错误处理 tempError:温度错误类型 heater:加热元件*/
+void Heater_TemperatureError(Temp_ErrorTypeDef tempError, Heater_TypeDef heater)
+{
+    if(heater == Heater_Bed)
+    {
+#if HEATER_BED_USED
+        Heater_SetCompare(Heater_Bed, 0);
+        if(IsStopped() == false)
+        {
+            printf(SERIAL_ERROR_START);
+            printf("Temperature heated bed switched off. MAXTEMP triggered !!");
+        }
+#endif
+    }
+    else
+    {
+        Heater_Disable();
+        if(IsStopped() == false)
+        {
+            printf(SERIAL_ERROR_START);
+            printf("%d", heater);
+            if(tempError == Temp_OverMax) printf(": Extruder switched off. MAXTEMP triggered !\r\n");
+            else printf(": Extruder switched off. MINTEMP triggered !\r\n");
+        }
+    }
+#ifndef BOGUS_TEMPERATURE_FAILSAFE_OVERRIDE
+    Stop();
+#endif
+}
+
+/*加热元件加热前检查*/
+void Heater_SetWatch(void)
+{
+#ifdef WATCH_TEMP_PERIOD
+    int count;
+    for(count=0; count<EXTRUDERS; count++)
+    {
+        if(Heater_GetCurrentCelsius(count) < Heater_GetTargetCelsius(count)-(WATCH_TEMP_INCREASE*2))
+        {
+            watch_start_temp[count] = Heater_GetCurrentCelsius(count);
+            watchmillis[count] = HAL_GetTick();
+        }
+    }
+#endif
+}
+
+/*加热元件失能*/
+void Heater_Disable(void)
+{
+    int count;
+#if FAN_HEAD_0_USED
+    Fan_SetCompare(Fan_Head0, 0);
+#endif
+    for(count=0; count<EXTRUDERS; count++) Heater_SetTargetCelsius(0, (Heater_TypeDef)count);
+    Heater_SetTargetCelsius(0, Heater_Bed);
+#if TEMP_HEAD_0_USED
+    soft_pwm[Heater_Head0] = 0;
+#if HEATER_HEAD_0_USED
+    Heater_SetCompare(Heater_Head0, soft_pwm[Heater_Head0]);
+#endif
+#endif
+#if TEMP_HEAD_1_USED
+    soft_pwm[Heater_Head1] = 0;
+#if HEATER_HEAD_1_USED
+    Heater_SetCompare(Heater_Head1, soft_pwm[Heater_Head1]);
+#endif
+#endif
+#if TEMP_HEAD_2_USED
+    soft_pwm[Heater_Head2] = 0;
+#if HEATER_HEAD_2_USED
+    Heater_SetCompare(Heater_Head2, soft_pwm[Heater_Head2]);
+#endif
+#endif
+#if TEMP_BED_USED
+    soft_pwm_bed = 0;
+#if HEATER_BED_USED
+    Heater_SetCompare(Heater_Bed, soft_pwm_bed);
+#endif
+#endif
+}
+
+/*加热元件设置PID*/
+void Heater_SetPID(void)
+{
+#ifdef PIDTEMP
+    unsigned char count;
+    for(count=0; count<EXTRUDERS; count++) temp_iState_max[count] = PID_INTEGRAL_DRIVE_MAX / Ki;
+#endif
+#ifdef PIDTEMPBED
+    temp_iState_max_bed = PID_INTEGRAL_DRIVE_MAX / bedKi;
+#endif
+}
+
+/*温度控制初始化*/
+void Temperature_Configuration(void)
+{
+    unsigned char count;
+    for(count=0; count<EXTRUDERS; count++)
+    {
+        maxttemp[count] = maxttemp[0];
+#ifdef PIDTEMP
+        temp_iState_min[count] = 0.0;
+        temp_iState_max[count] = PID_INTEGRAL_DRIVE_MAX / Ki;
+#endif
+#ifdef PIDTEMPBED
+        temp_iState_min_bed = 0.0;
+        temp_iState_max_bed = PID_INTEGRAL_DRIVE_MAX / bedKi;
+#endif
+    }
+    TIM5_Configuration(7199, 127);
+#if FAN_MODEL_0_USED
+    TIM12_Configuration(3599, 255);
+#endif
+#if FAN_HEAD_0_USED
+    //TIM_OC1Init(TIM5, &TIM_OCInitStructure);
+    //TIM_OC1PreloadConfig(TIM5, TIM_OCPreload_Enable);
+#endif
+#if HEATER_HEAD_1_USED
+    TIM_OC3Init(TIM5, &TIM_OCInitStructure);
+    TIM_OC3PreloadConfig(TIM5, TIM_OCPreload_Enable);
+#endif
+    ADC3_Configuration();
+    TIM6_Configuration(7199, 9);
+    Delay_Ms(250);
+#ifdef HEATER_0_MINTEMP
+    minttemp[Heater_Head0] = HEATER_0_MINTEMP;
+    while(analog2temp(minttemp_raw[Heater_Head0], Heater_Head0) < HEATER_0_MINTEMP)
+    {
+#if HEATER_0_RAW_LO_TEMP < HEATER_0_RAW_HI_TEMP
+        minttemp_raw[Heater_Head0] += OVERSAMPLENR;
+#else
+        minttemp_raw[Heater_Head0] -= OVERSAMPLENR;
+#endif
+    }
+#endif
+#ifdef HEATER_0_MAXTEMP
+    maxttemp[Heater_Head0] = HEATER_0_MAXTEMP;
+    while(analog2temp(maxttemp_raw[Heater_Head0], Heater_Head0) > HEATER_0_MAXTEMP)
+    {
+#if HEATER_0_RAW_LO_TEMP < HEATER_0_RAW_HI_TEMP
+        maxttemp_raw[Heater_Head0] -= OVERSAMPLENR;
+#else
+        maxttemp_raw[Heater_Head0] += OVERSAMPLENR;
+#endif
+    }
+#endif
+#if (EXTRUDERS > 1) && defined(HEATER_1_MINTEMP)
+    minttemp[Heater_Head1] = HEATER_1_MINTEMP;
+    while(analog2temp(minttemp_raw[Heater_Head1], Heater_Head1) < HEATER_1_MINTEMP)
+    {
+#if HEATER_1_RAW_LO_TEMP < HEATER_1_RAW_HI_TEMP
+        minttemp_raw[Heater_Head1] += OVERSAMPLENR;
+#else
+        minttemp_raw[Heater_Head1] -= OVERSAMPLENR;
+#endif
+    }
+#endif
+#if (EXTRUDERS > 1) && defined(HEATER_1_MAXTEMP)
+    maxttemp[1] = HEATER_1_MAXTEMP;
+    while(analog2temp(maxttemp_raw[Heater_Head1], Heater_Head1) > HEATER_1_MAXTEMP)
+    {
+#if HEATER_1_RAW_LO_TEMP < HEATER_1_RAW_HI_TEMP
+        maxttemp_raw[Heater_Head1] -= OVERSAMPLENR;
+#else
+        maxttemp_raw[Heater_Head1] += OVERSAMPLENR;
+#endif
+    }
+#endif
+#if (EXTRUDERS > 2) && defined(HEATER_2_MINTEMP)
+    minttemp[Heater_Head2] = HEATER_2_MINTEMP;
+    while(analog2temp(minttemp_raw[Heater_Head2], Heater_Head2) < HEATER_2_MINTEMP)
+    {
+#if HEATER_2_RAW_LO_TEMP < HEATER_2_RAW_HI_TEMP
+        minttemp_raw[Heater_Head2] += OVERSAMPLENR;
+#else
+        minttemp_raw[Heater_Head2] -= OVERSAMPLENR;
+#endif
+    }
+#endif
+#if (EXTRUDERS > 2) && defined(HEATER_2_MAXTEMP)
+    maxttemp[Heater_Head2] = HEATER_2_MAXTEMP;
+    while(analog2temp(maxttemp_raw[Heater_Head2], Heater_Head2) > HEATER_2_MAXTEMP)
+    {
+#if HEATER_2_RAW_LO_TEMP < HEATER_2_RAW_HI_TEMP
+        maxttemp_raw[Heater_Head2] -= OVERSAMPLENR;
+#else
+        maxttemp_raw[Heater_Head2] += OVERSAMPLENR;
+#endif
+    }
+#endif
+#ifdef BED_MINTEMP
+    /* No bed MINTEMP error implemented?!? */ /*
+    while(analog2tempBed(bed_minttemp_raw) < BED_MINTEMP) {
+    #if HEATER_BED_RAW_LO_TEMP < HEATER_BED_RAW_HI_TEMP
+        bed_minttemp_raw += OVERSAMPLENR;
+    #else
+        bed_minttemp_raw -= OVERSAMPLENR;
+    #endif
+      }
+      */
+#endif
+#ifdef BED_MAXTEMP
+    while(analog2tempBed(bed_maxttemp_raw) > BED_MAXTEMP)
+    {
+#if HEATER_BED_RAW_LO_TEMP < HEATER_BED_RAW_HI_TEMP
+        bed_maxttemp_raw -= OVERSAMPLENR;
+#else
+        bed_maxttemp_raw += OVERSAMPLENR;
+#endif
+    }
+#endif
+}
+
+/*温度控制管理*/
+void Temperature_Manage(void)
+{
+    float pid_input, pid_output;
+    int count;
+    if(temp_meas_ready != true) return;
+    updateTemperaturesFromRawValues();
+    for(count=0; count<EXTRUDERS; count++)
+    {
+#ifdef PIDTEMP
+        pid_input = current_temperature[count];
+#ifndef PID_OPENLOOP
+        pid_error[count] = target_temperature[count] - pid_input;
+        if(pid_error[count] > PID_FUNCTIONAL_RANGE)
+        {
+            pid_output = BANG_MAX;
+            pid_reset[count] = true;
+        }
+        else if(pid_error[count]<-PID_FUNCTIONAL_RANGE || target_temperature[count]==0)
+        {
+            pid_output = 0;
+            pid_reset[count] = true;
+        }
+        else
+        {
+            if(pid_reset[count] == true)
+            {
+                temp_iState[count] = 0.0;
+                pid_reset[count] = false;
+            }
+            pTerm[count] = Kp * pid_error[count];
+            temp_iState[count] += pid_error[count];
+            temp_iState[count] = constrain(temp_iState[count], temp_iState_min[count], temp_iState_max[count]);
+            iTerm[count] = Ki * temp_iState[count];
+            //K1 defined in Configuration.h in the PID settings
+#define K2 (1.0-K1)
+            dTerm[count] = (Kd * (pid_input-temp_dState[count]))*K2+(K1 * dTerm[count]);
+            temp_dState[count] = pid_input;
+            pid_output = constrain(pTerm[count]+iTerm[count]-dTerm[count], 0, PID_MAX);
+        }
+#else
+        pid_output = constrain(target_temperature[count], 0, PID_MAX);
+#endif
+#ifdef PID_DEBUG
+        printf(" PIDDEBUG %d", count);
+        printf(": Input %f", pid_input);
+        //  printf(pid_input);
+        printf(" Output %f", pid_output);
+        //  printf(pid_output);
+        printf(" pTerm %f", pTerm[count]);
+        //  printf(pTerm[count]);
+        printf(" iTerm %f", iTerm[count]);
+        //  printf(iTerm[count]);
+        printf(" dTerm %f", dTerm[count]);
+        //  printf(dTerm[count]);
+        printf("\n\r");
+#endif
+#else /* PID off */
+        pid_output = 0;
+        if(current_temperature[count] < target_temperature[count]) pid_output = PID_MAX;
+#endif
+        // Check if temperature is within the correct range
+        if((current_temperature[count]>minttemp[count]) && (current_temperature[count]<maxttemp[count])) soft_pwm[count] = (int)pid_output >> 1;
+        else soft_pwm[count] = 0;
+#ifdef WATCH_TEMP_PERIOD	 // 加热前检查
+        if(watchmillis[count] && millis() - watchmillis[count] > WATCH_TEMP_PERIOD)
+        {
+            if(Heater_GetCurrentCelsius(count) < watch_start_temp[count] + WATCH_TEMP_INCREASE)
+            {
+                Heater_SetTargetCelsius(0, count);
+                LCD_MESSAGEPGM("Heating failed");
+                printf(SERIAL_ECHO_START);
+                SERIAL_ECHOLN("Heating failed");
+            }
+            else watchmillis[count] = 0;
+        }
+#endif
+    } // End extruder for loop
+#ifndef PIDTEMPBED
+    if(HAL_GetTick()-previous_millis_bed_heater < BED_CHECK_INTERVAL) return;
+    previous_millis_bed_heater = HAL_GetTick();
+#endif
+#if TEMP_SENSOR_BED != 0
+#ifdef PIDTEMPBED
+    pid_input = current_temperature_bed;
+#ifndef PID_OPENLOOP
+    pid_error_bed = target_temperature_bed - pid_input;
+    pTerm_bed = bedKp * pid_error_bed;
+    temp_iState_bed += pid_error_bed;
+    temp_iState_bed = constrain(temp_iState_bed, temp_iState_min_bed, temp_iState_max_bed);
+    iTerm_bed = bedKi * temp_iState_bed;
+    //K1 defined in Configuration.h in the PID settings
+#define K2 (1.0-K1)
+    dTerm_bed = (bedKd * (pid_input - temp_dState_bed))*K2 + (K1 * dTerm_bed);
+    temp_dState_bed = pid_input;
+    pid_output = constrain(pTerm_bed + iTerm_bed - dTerm_bed, 0, MAX_BED_POWER);
+#else
+    pid_output = constrain(target_temperature_bed, 0, MAX_BED_POWER);
+#endif
+    if((current_temperature_bed>BED_MINTEMP) && (current_temperature_bed<BED_MAXTEMP)) soft_pwm_bed = (int)pid_output >> 1;
+    else soft_pwm_bed = 0;
+#elif !defined(BED_LIMIT_SWITCHING)
+// Check if temperature is within the correct range
+    if((current_temperature_bed > BED_MINTEMP) && (current_temperature_bed < BED_MAXTEMP))
+    {
+        if(current_temperature_bed >= target_temperature_bed) soft_pwm_bed = 0;
+        else soft_pwm_bed = MAX_BED_POWER >> 1;
+    }
+    else
+    {
+        soft_pwm_bed = 0;
+#if HEATER_BED_USED
+        Heater_SetCompare(Heater_Bed, soft_pwm_bed);
+#endif
+    }
+#else //#ifdef BED_LIMIT_SWITCHING
+// Check if temperature is within the correct band
+    if((current_temperature_bed > BED_MINTEMP) && (current_temperature_bed < BED_MAXTEMP))
+    {
+        if(current_temperature_bed > target_temperature_bed + BED_HYSTERESIS) soft_pwm_bed = 0;
+        else if(current_temperature_bed <= target_temperature_bed-BED_HYSTERESIS) soft_pwm_bed = MAX_BED_POWER >> 1;
+    }
+    else
+    {
+        soft_pwm_bed = 0;
+#if HEATER_BED_USED
+        Heater_SetCompare(Heater_Bed, soft_pwm_bed);
+#endif
+    }
+#endif
+#endif
+}
+
+/*温度控制执行进程*/
+void Temperature_Process(void)
+{
+    //these variables are only accesible from the ISR, but static, so they don't loose their value
+    static unsigned char temp_count = 0;
+    static unsigned long raw_temp_0_value = 0;
+#if EXTRUDERS > 1
+    static unsigned long raw_temp_1_value = 0;
+#endif
+#if EXTRUDERS > 2
+    static unsigned long raw_temp_2_value = 0;
+#endif
+    static unsigned long raw_temp_bed_value = 0;
+    static unsigned char temp_state = 0;
+#if HEATER_HEAD_0_USED
+    Heater_SetCompare(Heater_Head0, (unsigned short int)soft_pwm[Heater_Head0]);
+#endif
+#if EXTRUDERS > 1
+    Heater_SetCompare(Heater_Head1, (unsigned short int)soft_pwm[Heater_Head1]);
+#endif
+#if EXTRUDERS > 2
+    Heater_SetCompare(Heater_Head2, (unsigned short int)soft_pwm[Heater_Head2]);
+#endif
+#if HEATER_BED_USED
+    Heater_SetCompare(Heater_Bed, (unsigned short int)soft_pwm_bed);
+#endif
+#if FAN_MODEL_0_USED
+    Fan_SetCompare(Fan_Model0, (unsigned short int)fanSpeed);
+#endif
+    switch(temp_state)
+    {
+    case 0:
+#if TEMP_HEAD_0_USED
+        raw_temp_0_value += Heater_GetValue(Heater_Head0);
+#endif
+        temp_state = 1;
+        break;
+    case 1:
+#if TEMP_HEAD_1_USED
+        raw_temp_1_value += Heater_GetValue(Heater_Head1);
+#endif
+        temp_state = 2;
+        break;
+    case 2:
+#if TEMP_HEAD_2_USED
+        raw_temp_2_value += Heater_GetValue(Heater_Head2);
+#endif
+        temp_state = 3;
+        break;
+    case 3:
+#if TEMP_BED_USED
+        raw_temp_bed_value += Heater_GetValue(Heater_Bed); //28ms
+#endif
+        temp_state = 0;
+        temp_count++;
+        break;
+        //  default:
+//      printf(SERIAL_ERROR_START);
+//      SERIAL_ERRORLNPGM("Temp measurement error!");
+//      break;
+    }
+    //lcd_buttons_update();	///////////////////////////////////
+    if(temp_count >= 16) // 4 ms * 16 = 64ms.
+    {
+        if(!temp_meas_ready) //Only update the raw values if they have been read. Else we could be updating them during reading.
+        {
+            current_temperature_raw[Heater_Head0] = raw_temp_0_value;
+#if EXTRUDERS > 1
+            current_temperature_raw[Heater_Head1] = raw_temp_1_value;
+#endif
+#if EXTRUDERS > 2
+            current_temperature_raw[Heater_Head2] = raw_temp_2_value;
+#endif
+            current_temperature_bed_raw = raw_temp_bed_value;
+            //    printf("\r\n ex0:%d\r\n",current_temperature_raw[0]);
+            //	  printf("\r\n bed:%d\r\n",current_temperature_bed_raw);
+        }
+        temp_meas_ready = true;
+        temp_count = 0;
+        raw_temp_0_value = 0;
+#if EXTRUDERS > 2
+        raw_temp_1_value = 0;
+#endif
+#if EXTRUDERS > 2
+        raw_temp_2_value = 0;
+#endif
+        raw_temp_bed_value = 0;
+#if HEATER_0_RAW_LO_TEMP > HEATER_0_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head0] <= maxttemp_raw[Heater_Head0]) Heater_TemperatureError(Temp_OverMax, Heater_Head0);
+#else
+        if(current_temperature_raw[Heater_Head0] >= maxttemp_raw[Heater_Head0]) Heater_TemperatureError(Temp_OverMax, Heater_Head0);
+#endif
+#if HEATER_0_RAW_LO_TEMP > HEATER_0_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head0] >= minttemp_raw[Heater_Head0]) Heater_TemperatureError(Temp_OverMin, Heater_Head0);
+#else
+        if(current_temperature_raw[Heater_Head0] <= minttemp_raw[Heater_Head0]) Heater_TemperatureError(Temp_OverMin, Heater_Head0);
+#endif
+#if EXTRUDERS > 1
+#if HEATER_1_RAW_LO_TEMP > HEATER_1_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head1] <= maxttemp_raw[Heater_Head1]) Heater_TemperatureError(Temp_OverMax, Heater_Head1);
+#else
+        if(current_temperature_raw[Heater_Head1] >= maxttemp_raw[Heater_Head1]) Heater_TemperatureError(Temp_OverMax, Heater_Head1);
+#endif
+#if HEATER_1_RAW_LO_TEMP > HEATER_1_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head1] >= minttemp_raw[Heater_Head1]) Heater_TemperatureError(Temp_OverMin, Heater_Head1);
+#else
+        if(current_temperature_raw[Heater_Head1] <= minttemp_raw[Heater_Head1]) Heater_TemperatureError(Temp_OverMin, Heater_Head1);
+#endif
+#endif
+#if EXTRUDERS > 2
+#if HEATER_2_RAW_LO_TEMP > HEATER_2_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head2] <= maxttemp_raw[Heater_Head2]) Heater_TemperatureError(Temp_OverMax, Heater_Head2);
+#else
+        if(current_temperature_raw[Heater_Head2] >= maxttemp_raw[Heater_Head2]) Heater_TemperatureError(Temp_OverMax, Heater_Head2);
+#endif
+#if HEATER_2_RAW_LO_TEMP > HEATER_2_RAW_HI_TEMP
+        if(current_temperature_raw[Heater_Head2] >= minttemp_raw[Heater_Head2]) Heater_TemperatureError(Temp_OverMin, Heater_Head2);
+#else
+        if(current_temperature_raw[Heater_Head2] <= minttemp_raw[Heater_Head2]) Heater_TemperatureError(Temp_OverMin, Heater_Head2);
+#endif
+#endif
+        /* No bed MINTEMP error? */
+#if defined(BED_MAXTEMP) && (TEMP_SENSOR_BED != 0)
+#if HEATER_BED_RAW_LO_TEMP > HEATER_BED_RAW_HI_TEMP
+        if(current_temperature_bed_raw <= bed_maxttemp_raw)
+        {
+            target_temperature_bed = 0;
+            Heater_TemperatureError(Temp_OverMax, Heater_Bed);
+        }
+#else
+        if(current_temperature_bed_raw >= bed_maxttemp_raw)
+        {
+            target_temperature_bed = 0;
+            Heater_TemperatureError(Temp_OverMax, Heater_Bed);
+        }
+#endif
+#endif
+    }
+}
+
+#ifdef PIDTEMP
+/*温度PID比例调制 parameter:参数(0,I;1,D) value:值 scaleType:比例类型(0,放大;1,缩小)*/
+float Temperature_ScalePID(char parameter, float value, unsigned char scaleType)
+{
+    float scaleValue;
+    if(parameter == 0)
+    {
+        if(scaleType == 0) scaleValue = value * PID_dT;
+        else scaleValue = value / PID_dT;
+    }
+    else if(parameter == 1)
+    {
+        if(scaleType == 0) scaleValue = value / PID_dT;
+        else scaleValue = value * PID_dT;
+    }
+    return scaleValue;
+}
+#endif
+
+/*模拟值转换温度值 raw:温度阈值 e:加热头*/
+static float analog2temp(int raw, unsigned char e)
+{
+    if(e >= EXTRUDERS)
+    {
+        printf(SERIAL_ERROR_START);
+        printf("%d", e);
+        printf(" - Invalid extruder number !");
+        kill();
+    }
+    if(heater_ttbl_map[e] != NULL)
+    {
+        float celsius = 0;
+        uint8_t i;
+        short (*tt)[][2] = (short (*)[][2])(heater_ttbl_map[e]);
+        for(i=1; i<heater_ttbllen_map[e]; i++)
+        {
+            if((*tt)[i][0] > raw)
+            {
+                celsius = (*tt)[i-1][1] + (raw - (*tt)[i-1][0]) * (float)((*tt)[i][1] - (*tt)[i-1][1]) / (float)((*tt)[i][0] - (*tt)[i-1][0]);
+                break;
+            }
+        }
+        // Overflow: Set to last value in the table
+        if(i == heater_ttbllen_map[e]) celsius = (*tt)[i-1][1];
+        return celsius;
+    }
+    return 0;
+    //return ((raw * ((5.0 * 100.0) / 1024.0) / OVERSAMPLENR) * TEMP_SENSOR_AD595_GAIN) + TEMP_SENSOR_AD595_OFFSET;
+}
+
+/*热床模拟值转换温度值 raw:温度阈值*/
+static float analog2tempBed(int raw)
+{
+#ifdef BED_USES_THERMISTOR
+    float celsius = 0;
+    unsigned char i;
+    for(i=1; i<BEDTEMPTABLE_LEN; i++)
+    {
+        if(BEDTEMPTABLE[i][0] > raw)
+        {
+            celsius = BEDTEMPTABLE[i-1][1] + (raw-BEDTEMPTABLE[i-1][0])*(float)(BEDTEMPTABLE[i][1]-BEDTEMPTABLE[i-1][1])/(float)(BEDTEMPTABLE[i][0] - BEDTEMPTABLE[i-1][0]);
+            break;
+        }
+    }
+    // Overflow: Set to last value in the table
+    if(i == BEDTEMPTABLE_LEN) celsius = BEDTEMPTABLE[i-1][1];
+    return celsius;
+#elif defined BED_USES_AD595
+    return ((raw * ((5.0 * 100.0) / 1024.0) / OVERSAMPLENR) * TEMP_SENSOR_AD595_GAIN) + TEMP_SENSOR_AD595_OFFSET;
+#else
+    return 0;
+#endif
+}
+
+/*将原始值转换为实际温度*/
+static void updateTemperaturesFromRawValues(void)
+{
+    unsigned char count;
+    for(count=0; count<EXTRUDERS; count++) current_temperature[count] = analog2temp(current_temperature_raw[count], count);
+    current_temperature_bed = analog2tempBed(current_temperature_bed_raw);
+    //Reset the watchdog after we know we have a temperature measurement.
+//LEO    watchdog_reset();
+    CRITICAL_SECTION_START;
+    temp_meas_ready = false;
+    CRITICAL_SECTION_END;
+}
