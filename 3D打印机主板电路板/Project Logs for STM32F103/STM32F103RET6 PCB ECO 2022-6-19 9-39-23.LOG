@@ -1,0 +1,2 @@
+Change Component Footprint: Designator=C52 Old Footprint=C 0603_L New Footprint=C 0805_L
+Added Room: Name=STM32F103

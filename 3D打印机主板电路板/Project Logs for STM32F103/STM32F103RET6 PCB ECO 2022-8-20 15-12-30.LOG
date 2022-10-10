@@ -1,0 +1,4 @@
+Removed Pin From Net: NetName=GND Pin=U6-0
+Added Component: Designator=B?(BEEP 5x9x5.5)
+Added Member To Class: ClassName=STM32F103 Member=Component B? BEEP
+Added Room: Name=STM32F103

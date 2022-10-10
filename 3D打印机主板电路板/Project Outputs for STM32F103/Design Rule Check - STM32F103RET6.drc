@@ -1,0 +1,34 @@
+Protel Design System Design Rule Check
+PCB File : E:\艾克瑞特\工厂生产\3D打印机\3D打印机主板\3D打印机主板电路板带自动断电灯带\STM32F103RET6.PcbDoc
+Date     : 2022/8/20
+Time     : 15:54:11
+
+Processing Rule : Clearance Constraint (Gap=0.127mm) (All),(All)
+   Violation between Clearance Constraint: (Collision < 0.127mm) Between Arc (155.287mm,75.911mm) on Keep-Out Layer And Pad USB1-0(155.28mm,75.911mm) on Multi-Layer 
+   Violation between Clearance Constraint: (Collision < 0.127mm) Between Arc (155.287mm,80.534mm) on Keep-Out Layer And Pad USB1-0(155.28mm,80.534mm) on Multi-Layer 
+   Violation between Clearance Constraint: (0.094mm < 0.127mm) Between Pad USB1-0(158.404mm,73.244mm) on Top Layer And Track (159.691mm,87.278mm)(159.691mm,54.916mm) on Keep-Out Layer 
+   Violation between Clearance Constraint: (0.094mm < 0.127mm) Between Pad USB1-0(158.404mm,83.404mm) on Top Layer And Track (159.691mm,87.278mm)(159.691mm,54.916mm) on Keep-Out Layer 
+Rule Violations :4
+
+Processing Rule : Short-Circuit Constraint (Allowed=No) (All),(All)
+Rule Violations :0
+
+Processing Rule : Un-Routed Net Constraint ( (All) )
+Rule Violations :0
+
+Processing Rule : Width Constraint (Min=0.254mm) (Max=25.4mm) (Preferred=0.254mm) (All)
+Rule Violations :0
+
+Processing Rule : Power Plane Connect Rule(Relief Connect )(Expansion=0.508mm) (Conductor Width=0.254mm) (Air Gap=0.254mm) (Entries=4) (All)
+Rule Violations :0
+
+Processing Rule : Hole Size Constraint (Min=0.025mm) (Max=3mm) (All)
+Rule Violations :0
+
+Processing Rule : Height Constraint (Min=0mm) (Max=25.4mm) (Prefered=12.7mm) (All)
+Rule Violations :0
+
+
+Violations Detected : 4
+Waived Violations : 0
+Time Elapsed        : 00:00:01

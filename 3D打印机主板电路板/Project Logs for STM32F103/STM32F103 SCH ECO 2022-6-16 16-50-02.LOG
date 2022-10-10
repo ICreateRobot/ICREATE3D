@@ -1,0 +1,2 @@
+Remove Pin=FAN3-1 From Net=VIN
+Add Pin To Net: Pin=C43-1 Old Net=NetC43_1 New Net=NRST

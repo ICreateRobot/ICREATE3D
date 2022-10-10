@@ -1,0 +1,20 @@
+Removed Member From Class: ClassName=STM32F103 Member=B?
+Added Component: Designator=B1(BEEP 5x9x5.5)
+Added Component: Designator=Q3(SOT-23)
+Added Component: Designator=R60(R 0603_L)
+Add component (AddParameter): Name = "BOM名称"; Value = "贴片电阻"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "版权归属"; Value = "源创客"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "学习资源"; Value = "www.ooocke.com"; VariantName = "[No Variations]"
+Added Pin To Net: NetName=3V3 Pin=B1-1
+Added Pin To Net: NetName=GND Pin=Q3-E
+Added Pin To Net: NetName=IR Pin=R60-2
+Added Pin To Net: NetName=NetB1_2 Pin=B1-2
+Added Pin To Net: NetName=NetB1_2 Pin=Q3-C
+Added Net: Name=NetB1_2
+Added Pin To Net: NetName=NetQ3_B Pin=Q3-B
+Added Pin To Net: NetName=NetQ3_B Pin=R60-1
+Added Net: Name=NetQ3_B
+Added Member To Class: ClassName=STM32F103 Member=Component B1 BEEP
+Added Member To Class: ClassName=STM32F103 Member=Component Q3 NPN
+Added Member To Class: ClassName=STM32F103 Member=Component R60 10K
+Added Room: Name=STM32F103

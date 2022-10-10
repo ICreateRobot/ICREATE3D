@@ -1,0 +1,9 @@
+Removed Pin From Net: NetName=GND Pin=U6-0
+Change Component Footprint: Designator=R57 Old Footprint=R 0603_L New Footprint=R 0603_M
+Change Component Designator: OldDesignator=D NewDesignator=P5
+Change Component Designator: OldDesignator=K NewDesignator=P4
+Change Component Designator: OldDesignator=L NewDesignator=XH1
+Added Pin To Net: NetName=GND Pin=C42-1
+Added Pin To Net: NetName=GND Pin=C44-1
+Added Pin To Net: NetName=GND Pin=U9-4
+Added Room: Name=STM32F103

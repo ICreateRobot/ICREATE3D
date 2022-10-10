@@ -1,0 +1,71 @@
+Removed Pin From Net: NetName=GND Pin=U6-0
+Change Component Footprint: Designator=R57 Old Footprint=R 0603_L New Footprint=R 0603_M
+Change Component Comment : Designator=R59 Old Comment=1K New Comment=10K
+Change Component Comment : Designator=R57 Old Comment=3K24 New Comment=3K3
+Change Component Comment : Designator=C52 Old Comment=47uF New Comment=100uF
+Change Component Comment : Designator=D7 Old Comment=SS24 New Comment=SS34
+Change Component Comment : Designator=D5 Old Comment=SS34 New Comment=SS54
+Change Component Designator: OldDesignator=D NewDesignator=P5
+Change Component Designator: OldDesignator=HEATER NewDesignator=HEATER1
+Change Component Designator: OldDesignator=K NewDesignator=P4
+Change Component Designator: OldDesignator=L NewDesignator=XH1
+Change Component Designator: OldDesignator=TF NewDesignator=TF1
+Change Component Designator: OldDesignator=TP NewDesignator=TH
+Change Component Designator: OldDesignator=USB NewDesignator=USB1
+Change Component Designator: OldDesignator=主板风扇 NewDesignator=FAN2
+Change Component Designator: OldDesignator=喷头风扇 NewDesignator=FAN1
+Change component parameters: Designator = "R45" ("R45"); Footprint = "0603"; UniqueID = "\YFDDXLBS" ("\YFDDXLBS")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "AXIAL-0.4"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "8-Jun-2000"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "2K"; VariantName = "[No Variations]"
+Change component parameters: Designator = "R53" ("R53"); Footprint = "0603"; UniqueID = "\KVIVDTVC" ("\KVIVDTVC")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "AXIAL-0.4"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "8-Jun-2000"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "1k"; VariantName = "[No Variations]"
+Change component parameters: Designator = "RP1" ("RP1"); Footprint = "贴片可调电阻"; UniqueID = "\JKVQOVOG" ("\JKVQOVOG")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "VR3"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "24-Mar-1999"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Set Position"; Value = "0.5"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Sim Note"; Value = "Enter the Resistance value and the set point into parameter fields."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "10K"; VariantName = "[No Variations]"
+Change component parameters: Designator = "RP2" ("RP2"); Footprint = "贴片可调电阻"; UniqueID = "\SLJYMMSU" ("\SLJYMMSU")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "VR3"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "24-Mar-1999"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Set Position"; Value = "0.5"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Sim Note"; Value = "Enter the Resistance value and the set point into parameter fields."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "10K"; VariantName = "[No Variations]"
+Change component parameters: Designator = "RP3" ("RP3"); Footprint = "贴片可调电阻"; UniqueID = "\WICXIDBG" ("\WICXIDBG")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "VR3"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "24-Mar-1999"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Set Position"; Value = "0.5"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Sim Note"; Value = "Enter the Resistance value and the set point into parameter fields."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "10K"; VariantName = "[No Variations]"
+Change component parameters: Designator = "RP4" ("RP4"); Footprint = "贴片可调电阻"; UniqueID = "\TLOGBSQU" ("\TLOGBSQU")
+Change component parameters (AddParameter): Name = "LatestRevisionDate"; Value = "17-Jul-2002"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "LatestRevisionNote"; Value = "Re-released for DXP Platform."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "PackageReference"; Value = "VR3"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Published"; Value = "24-Mar-1999"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Publisher"; Value = "Altium Limited"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Set Position"; Value = "0.5"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Sim Note"; Value = "Enter the Resistance value and the set point into parameter fields."; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Value"; Value = "10K"; VariantName = "[No Variations]"
+Added Member To Class: ClassName=STM32F103 Member=Component P4 按键
+Added Member To Class: ClassName=STM32F103 Member=Component P5 OLED
+Added Member To Class: ClassName=STM32F103 Member=Component XH1 XH3
+Added Member To Class: ClassName=STM32F103 Member=Component Z- Header 2
+Added Room: Name=STM32F103
