@@ -1,0 +1,114 @@
+BL51 BANKED LINKER/LOCATER V6.22                                                        06/30/2022  20:16:17  PAGE 1
+
+
+BL51 BANKED LINKER/LOCATER V6.22, INVOKED BY:
+E:\KEIL_V4\C51\BIN\BL51.EXE HELLO.obj TO HELLO RAMSIZE (256)
+
+
+MEMORY MODEL: SMALL
+
+
+INPUT MODULES INCLUDED:
+  HELLO.obj (HELLO)
+  E:\KEIL_V4\C51\LIB\C51S.LIB (?C_STARTUP)
+  E:\KEIL_V4\C51\LIB\C51S.LIB (?C_INIT)
+
+
+LINK MAP OF MODULE:  HELLO (HELLO)
+
+
+            TYPE    BASE      LENGTH    RELOCATION   SEGMENT NAME
+            -----------------------------------------------------
+
+            * * * * * * *   D A T A   M E M O R Y   * * * * * * *
+            REG     0000H     0008H     ABSOLUTE     "REG BANK 0"
+            DATA    0008H     0002H     UNIT         ?DT?HELLO
+            IDATA   000AH     0001H     UNIT         ?STACK
+
+            * * * * * * *   C O D E   M E M O R Y   * * * * * * *
+            CODE    0000H     0003H     ABSOLUTE     
+            CODE    0003H     008CH     UNIT         ?C_C51STARTUP
+            CODE    008FH     001DH     UNIT         ?PR?_DELAY_MS?HELLO
+            CODE    00ACH     001CH     UNIT         ?PR?MAIN?HELLO
+            CODE    00C8H     0007H     UNIT         ?PR?GPIO_INIT?HELLO
+            CODE    00CFH     0005H     UNIT         ?C_INITSEG
+
+
+
+OVERLAY MAP OF MODULE:   HELLO (HELLO)
+
+
+SEGMENT
+  +--> CALLED SEGMENT
+---------------------
+?C_C51STARTUP
+  +--> ?PR?MAIN?HELLO
+  +--> ?C_INITSEG
+
+?PR?MAIN?HELLO
+  +--> ?PR?GPIO_INIT?HELLO
+
+
+
+SYMBOL TABLE OF MODULE:  HELLO (HELLO)
+
+  VALUE           TYPE          NAME
+  ----------------------------------
+
+  -------         MODULE        HELLO
+  C:0000H         SYMBOL        _ICE_DUMMY_
+  D:00B2H         PUBLIC        P3M0
+  D:00B1H         PUBLIC        P3M1
+BL51 BANKED LINKER/LOCATER V6.22                                                      06/30/2022  20:16:17  PAGE 2
+
+
+  D:00B0H         PUBLIC        P3
+  D:0008H         PUBLIC        flag
+  C:00ACH         PUBLIC        main
+  C:00C8H         PUBLIC        GPIO_Init
+  B:00B0H.2       PUBLIC        key
+  B:00B0H.3       PUBLIC        LED
+  C:008FH         PUBLIC        _DELAY_MS
+  -------         PROC          _DELAY_MS
+  D:0006H         SYMBOL        a
+  -------         DO            
+  D:0004H         SYMBOL        i
+  -------         ENDDO         
+  C:008FH         LINE#         5
+  C:008FH         LINE#         7
+  C:0098H         LINE#         8
+  C:00ABH         LINE#         9
+  C:00ABH         LINE#         10
+  -------         ENDPROC       _DELAY_MS
+  -------         PROC          GPIO_INIT
+  C:00C8H         LINE#         11
+  C:00C8H         LINE#         12
+  C:00C8H         LINE#         15
+  C:00CBH         LINE#         16
+  C:00CEH         LINE#         19
+  -------         ENDPROC       GPIO_INIT
+  -------         PROC          MAIN
+  C:00ACH         LINE#         20
+  C:00ACH         LINE#         21
+  C:00ACH         LINE#         22
+  C:00AEH         LINE#         23
+  C:00B0H         LINE#         24
+  C:00B3H         LINE#         26
+  C:00B3H         LINE#         27
+  C:00B3H         LINE#         33
+  C:00B6H         LINE#         34
+  C:00B6H         LINE#         35
+  C:00BCH         LINE#         36
+  C:00BCH         LINE#         37
+  C:00C4H         LINE#         38
+  C:00C4H         LINE#         39
+  C:00C6H         LINE#         40
+  C:00C6H         LINE#         41
+  -------         ENDPROC       MAIN
+  -------         ENDMOD        HELLO
+
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_DELAY_MS?HELLO
+
+Program Size: data=11.0 xdata=0 code=212
+LINK/LOCATE RUN COMPLETE.  1 WARNING(S),  0 ERROR(S)
